@@ -4,88 +4,100 @@ mu = 398600.4418;   % [ km/s^2 ]
 er = 6378.137;      % [ km ]
 
 %% Parameter LankSat
-a_sat = 31378;       % semi-major axis [ km ] 
-e_sat = 0;           % eccentri [ degreee ]
-i_sat = 10;          % Inclination [ degree ]
-w_sat = 0;           % Arguemnt of perigee [ degree ]
-omega_sat = 30;       % RAAN [degree]
-True_sat = 0;           % true analomy [degree]
+LankSat.a = 31378;       % semi-major axis [ km ] 
+LankSat.ecc = 0;           % eccentri [ degreee ]
+LankSat.i = 10;          % Inclination [ degree ]
+LankSat.w = 0;           % Arguemnt of perigee [ degree ]
+LankSat.RAAN = 30;       % RAAN [degree]
+LankSat.trueAn = 0;           % true analomy [degree]
 
-Apn_sat =A_PN(omega_sat,w_sat,i_sat);
+Apn_sat =A_PN(LankSat);
 
-v_sat = [-sqrt(mu/a_sat)*sind(True_sat);
-    sqrt(mu/a_sat)*(e_sat+cosd(True_sat)); 
-    0 ];
+v_sat= [-sqrt(mu/LankSat.a)*sind(LankSat.trueAn);
+    sqrt(mu/LankSat.a)*(LankSat.ecc+cosd(LankSat.trueAn)); 
+    0 ]; % Perifocal 
 
-r_sat = [a_sat*cosd(True_sat);
-    a_sat*sind(True_sat);
-    0];
+r_sat = [LankSat.a*cosd(LankSat.trueAn);
+    LankSat.a*sind(LankSat.trueAn);
+    0]; % Perifocal
 
-r_sat_1 = Apn_sat*r_sat;
-v_sat_1 = Apn_sat*v_sat;
+r_satN = Apn_sat*r_sat; % Inertial
+v_satN = Apn_sat*v_sat; % Inertial
 %% Parameters for G15
-a_g = 42164.0;         % semi-major axis [ km ] 
-e_g = 0;                % eccentri [ degreee ]
-i_g = 0;                % Inclination [ degree ]
-w_g = 0;
-omega_g=0;
-lamda_g = 90;            % true analomy [degree]
+G15.a = 42164.0;         % semi-major axis [ km ] 
+G15.ecc = 0;                % eccentri [ degreee ]
+G15.i = 0;                % Inclination [ degree ]
+G15.w = 0;
+G15.RAAN=0;
+G15.truelon = 90;            % true analomy [degree]
 
-Apn_G15 = A_PN(omega_g,w_g,i_g);
+Apn_G15 = A_PN(G15);
 
-v_15 = [-sqrt(mu/a_g)*sind(lamda_g);
-    sqrt(mu/a_g)*(e_g+cosd(lamda_g)); 
-    0 ];
-r_G15 = [a_g*cosd(lamda_g);
-    a_g*sind(lamda_g);
-    0];
+v_G15 = [-sqrt(mu/G15.a)*sind(G15.truelon);
+    sqrt(mu/G15.a)*(G15.ecc+cosd(G15.truelon)); 
+    0 ]; % Perifocal
+r_G15 = [G15.a*cosd(G15.truelon);
+    G15.a*sind(G15.truelon);
+    0]; % Perifocal
 
-r_G15_1 = Apn_G15*r_G15;
-v_G15_1 = Apn_G15*v_15;
+r_G15N = Apn_G15*r_G15; % Inertial
+v_G15N = Apn_G15*v_G15; % Inertial
+%% Plane Change LankSat to G15, 10 degree inclination change
 
-%% Inlination change and Orbit Change
-N=6;
-r = a_sat;
-a = a_sat;
-imax = 10;
-r_chase_1 = zeros(3,N-1);
-v_chase_1 = zeros(3,N-1);
-j = 0;
+LankSat.V0 = sqrt(mu/LankSat.a); % LankSat Initial Velocity
+deltai = 10; % [degrees]
+dV_plane = 2 * v_satN * sind(deltai/2);
 
+%% Hohmann Transfer Initial: a = 31378, desired: a = 42164
+aT = (LankSat.a + G15.a)/2; % Transfer Apogee
 
-% tranferin orbit from LankSat orbit to G15 orbit
-v_lsat = sqrt(u0/a_sat);                        %intial velocity at LankSat orbit
-at = (a_sat + a_g)/2;                           % Finding the apogee between Lansat and G15
-v_tranfer_sat = sqrt(u0 *(2/a_sat - 1/at));     % velocity transfer orbit lanksat
-delta_v_sat = abs( v_lsat - v_tranfer_sat);      % Change in velocity;
+vLankSat = sqrt(mu/LankSat.a); 
+v_transferLank = sqrt(mu *(2/LankSat.a - 1/aT));
+dV_transfer_Lanksat = abs(v_transferLank - vLankSat);
 
-v_tranfer_G = sqrt(u0 *(2/a_g - 1/at));         % velocity transfer orbit at G15
-v_g = sqrt(u0/a_g);                             % orbit velocity at G15
-detla_v_G15 = abs( v_tranfer_G -v_g);           % Velocity tranfer orbit of G15
-delta_v_G15_i = 2*v_g*sind(i_sat/2) ;             % Velocity of (G-15) and v=2*v59*sin(I/2) inlination change
+vG15 = sqrt(mu/G15.a); % Target Orbit
+v_transferG15 = sqrt(mu *(2/G15.a- 1/aT));
+dV_transfer_G15 = abs(vG15 - v_transferG15);
 
-V_total = delta_v_sat + delta_v_G15 + delta_v_G15_i;   % Total Velocity Change
-t_tranfer = pi*at^(3/2)/sqrt(mu);                      % Total Time 
+t_transfer = pi*aT^(3/2)/sqrt(mu);  % Transfer Period 
 
+dV_plane_phase = dV_transfer_Lanksat + dV_transfer_G15 + dV_plane; % Total delta V for plane and transfer manuevers
 
+%% Phase Manuever 
 
+% 0.17 degrees behind G15
+
+wtgt = sqrt(mu/(G15.a^3)); % angular rate of target
+Ptgt = 2*pi/wtgt; % 
+theta = 0.17;
+k = 1;
+
+dT = theta*pi/180/wtgt * k;
+Pchase = Ptgt + dT; 
+TOF = k * Pchase; % Time of Flight
+a_chase = ((mu*Pchase^2)/(4*pi^2))^(1/3);       % Semi major axis 
+v_phasing = sqrt(2/G15.a - 1/a_chase);            % Velocity of chase
+dV_phase = abs(vG15 - v_phasing);           % Total velocity change in phase 
+
+% Total delta v to perform all manuevers 
+dV_total = dV_plane_phase + dV_phase;
 
 
 %% Orbit intergation
 t=0;
 dt =1.0;
-nt_ch = ceil(2*pi/sqrt(mu/a_sat^3)/dt);
+nt_ch = ceil(2*pi/sqrt(mu/LankSat.a^3)/dt);
 x_chase = zeros(6,nt_ch);
-x_chase(:,1)=[r_sat_1;v_sat_1];
+x_chase(:,1)=[r_satN;v_satN];
 x_chase = rk4(nt_ch,x_chase,t,dt,mu);
 
-nt_traget = ceil(2*pi/sqrt(mu/a_g^3)/dt);
-x_traget(:,1)=[r_G15_1;v_G15_1];
-x_traget = rk4(nt_traget,x_traget,t,dt,mu);
+nt_target = ceil(2*pi/sqrt(mu/G15.a^3)/dt);
+x_target(:,1)=[r_G15N;v_G15N];
+x_target = rk4(nt_target,x_target,t,dt,mu);
 
+nt_ch_tranfer = ceil(t_transfer/dt);
 
-nt_ch_tranfer = ceil(t_tranfer/dt);
-for k = 1: nt_traget - 1
+for k = 1: nt_target - 1
 
     % State at time K
     x_k = xch(:,k);
@@ -96,7 +108,7 @@ for k = 1: nt_traget - 1
     k3 = twoBEOM(t+dt/2, x_k + k2*dt/2, mu);
     k4 = twoBEOM(t+dt, x_k + k3*dt, mu);
 
-     x1_chase(:,k+1) = x_k + dt/6 * (k1+ 2*k2 + 2*k3 + k4);
+    x1_chase(:,k+1) = x_k + dt/6 * (k1+ 2*k2 + 2*k3 + k4);
 end
 nt2 = ceil(T_flight_vec(2)/dt);nt3 = ceil(2*T_flight_vec(3)/dt);
 nt4 = ceil(T_flight_vec(4)/dt);
@@ -133,7 +145,7 @@ surface(xSE, ySE, zSE);
 axis equal
 hold on
 plot3(x_chase(1,:), x_chase(2,:), x_chase(3,:), 'r-', 'LineWidth',1)
-plot3(x_traget(1,:), x_traget(2,:), x_traget(3,:), 'g-', 'LineWidth',1)
+plot3(x_target(1,:), x_target(2,:), x_target(3,:), 'g-', 'LineWidth',1)
 plot3(x_chase_1(1,:), x_chase_1(2,:), x_chase_1(3,:), 'k-', 'LineWidth',1)
 plot3(x_chase_2(1,:), x_chase_2(2,:), x_chase_2(3,:), 'r-', 'LineWidth',1)
 plot3(x_chase_3(1,:), x_chase_3(2,:), x_chase_3(3,:), 'b-', 'LineWidth',1)
